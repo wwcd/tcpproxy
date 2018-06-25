@@ -41,27 +41,28 @@ func main() {
 
 	go func() {
 		for {
-			client, err := incoming.Accept()
+			conn, err := incoming.Accept()
 			if err != nil {
 				log.Fatal("could not accept client connection", err)
 			}
-			fmt.Printf("client '%v' connected!\n", client.RemoteAddr())
+			fmt.Printf("client '%v' connected!\n", conn.RemoteAddr())
 
-			target, err := net.Dial("tcp", target)
-			if err != nil {
-				log.Fatal("could not connect to target", err)
-			}
-			fmt.Printf("connection to server %v established!\n", target.RemoteAddr())
+			go func(conn net.Conn) {
+				defer conn.Close()
 
-			go func() {
-				c := make(chan struct{})
-				go func() { io.Copy(client, target); c <- struct{}{} }()
-				go func() { io.Copy(target, client); c <- struct{}{} }()
-				<-c
-				client.Close()
-				target.Close()
-				fmt.Printf("disconnect client %v and target %v\n", client.RemoteAddr(), target.RemoteAddr())
-			}()
+				target, err := net.Dial("tcp", target)
+				if err != nil {
+					log.Fatal("could not connect to target", err)
+				}
+				defer target.Close()
+
+				fmt.Printf("connection to server %v established!\n", target.RemoteAddr())
+
+				var in, out int64
+				go func() { in, _ = io.Copy(target, conn) }()
+				out, _ = io.Copy(conn, target)
+				fmt.Printf("disconnect client %v and target %v, in %d, out %d\n", conn.RemoteAddr(), target.RemoteAddr(), in, out)
+			}(conn)
 		}
 	}()
 
